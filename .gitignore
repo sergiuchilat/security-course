@@ -1,0 +1,12 @@
+# Soluțiile profesorului rămân doar local
+profesor/
+
+# Fișiere generate
+node_modules/
+dist/
+.venv/
+_build/render/
+_build/labtest/
+*.bak
+.env
+.DS_Store
