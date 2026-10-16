@@ -4,6 +4,7 @@ Pe parcursul semestrului lucrezi pe **o singură aplicație**: „Notițe” (Ne
 
 | Lab | Tema | Fișa |
 |---|---|---|
+| 0 | Pregătirea spațiului de lucru (Linux sau Windows) | [lab0-pregatire](lab0-pregatire/README.md) |
 | 1 | Pornește aplicația și găsește riscurile | [lab1-docker](lab1-docker/README.md) |
 | 2 | SQL Injection și XSS | [lab2-injectii](lab2-injectii/README.md) |
 | 3 | Securizează login-ul și accesul la date | [lab3-autentificare](lab3-autentificare/README.md) |
