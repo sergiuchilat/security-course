@@ -103,6 +103,38 @@ function contentSlide(title, section) {
   return s;
 }
 
+// Speaker notes în română, în ordinea slide-urilor; nota în engleză rămâne dedesubt.
+const NOTES_RO = [
+  // 1
+  "Durată: 10–15 minute. Începe cu o întrebare către studenți: „Codul vostru e perfect: fără SQL injection, fără XSS. Poate fi totuși spart site-ul?” Răspunsul: da, dacă e vulnerabil chiar limbajul pe care rulează. Exact asta s-a întâmplat cu PHP pe 21 octombrie 2026.",
+  // 2
+  "RCE (Remote Code Execution) e cea mai gravă categorie: atacatorul rulează comenzi pe server cu drepturile utilizatorului serverului web (www-data). Numele PHP2Shell înseamnă „de la o cerere PHP la un shell pe server”.\n\nCifrele: scor CVSS 9.2 (oficial; postările scurse înainte de publicare spuneau 10.0, greșit). Nu e nevoie de cont, parolă sau vreun click din partea victimei. PHP rulează pe circa 70% din site-urile la care se știe limbajul de pe server. Toate versiunile de la 5.4 până la 8.5.11 sunt afectate.\n\nPe lângă execuția de cod, atacatorul poate citi memoria altor cereri: parole, token-uri de sesiune, chei API.",
+  // 3
+  "Afectat e orice server care rulează PHP și răspunde la cereri web: PHP-FPM, Apache mod_php, php-cgi, FrankenPHP, LiteSpeed. Prioritatea maximă a fost mod_php, pentru că atacul funcționează înainte să ruleze vreo linie din codul aplicației. Scripturile PHP rulate din linia de comandă (cron) nu sunt ținta, fiindcă acolo nu există o cerere HTTP controlată de atacator.\n\nExemple concrete: Wiz a demonstrat execuție de cod pe WordPress, Drupal și Joomla. Furnizorii de firewall-uri (pfSense, OPNsense, Cisco, Palo Alto) au publicat buletine pentru produsele lor. Universitatea din Washington a tăiat accesul la rețea (null route) pentru serverele nepatchuite până la actualizare.\n\nMesajul principal: codul aplicației poate fi 100% corect și totuși serverul e compromis, pentru că bug-ul e mai jos, în runtime.",
+  // 4
+  "Dacă se poate, desenează schema pe tablă.\n\nPHP-FPM și Apache nu pornesc un proces nou pentru fiecare cerere, ar fi prea lent. Țin un set de procese („workeri”) și fiecare servește mii de cereri la rând. Memoria din interiorul unui worker rămâne de la o cerere la alta, iar PHP trebuie să o curețe la final (pasul 4).\n\nPresupunerea pe care se bazează totul: curățarea se termină mereu corect, deci cererea B nu vede nimic din cererea A. PHP2Shell strică exact această presupunere. Ambele bug-uri sunt în pasul marcat cu roșu.\n\nLegătura cu cursul: în Lab 5 lucrăm cu Nginx + PHP-FPM / backend exact pe acest model.",
+  // 5
+  "Primul bug. Atacatorul trimite un POST multipart/form-data uriaș, fără antetul Content-Length (cu Transfer-Encoding: chunked). Așa, limita post_max_size nu se aplică. Mii de părți și antete umplu memoria.\n\nPHP rămâne fără memorie exact când datele cererii sunt pe jumătate construite și abandonează cererea. Dar rutina de curățare rulează oricum și tratează datele incomplete ca fiind valide: eliberează și folosește pointeri invalizi. Cu o așezare atentă a memoriei (heap), corupția devine execuție de cod.\n\nExemplul de pe slide e simplificat, scop didactic. PoC-ul public folosea un POST multipart cu un nume de fișier extrem de lung.\n\nIdeea pentru studenți: căile de eroare sunt rar testate. Codul care tratează „memorie insuficientă” aproape nu rulează în viața reală, așa că bug-urile de acolo supraviețuiesc ani de zile. Pe mod_php e nevoie de o singură cerere per încercare; pentru PHP-FPM nu s-a arătat un exploit complet pentru acest CVE.",
+  // 6
+  "Al doilea bug e între două cereri. Cererea 1 („producătorul”) provoacă o eroare fatală: timeout, memorie epuizată, un require eșuat. PHP se oprește înainte să reseteze o parte din starea globală (erori, sesiune, backtrace), iar acea stare arată spre memorie deja eliberată.\n\nCererea 2 („consumatorul”) ajunge la același worker. Ceva rulează înainte de inițializarea normală, de exemplu progresul upload-ului din sesiune sau un avertisment de la o setare INI din .htaccess, și citește pointerul vechi: use-after-free, deci execuție de cod sau scurgere de memorie.\n\nAtacatorul nu controlează la ce worker ajunge, așa că trimite multe perechi de cereri până nimerește.\n\nDetaliu important din advisory: ascunderea erorilor (display_errors=Off, error_reporting, operatorul @) NU ajută. Starea veche e folosită chiar dacă nu se afișează și nu se loghează nimic. Deci „logurile mele sunt curate” nu e o dovadă că serverul e în siguranță.",
+  // 7
+  "Ce obține atacatorul:\n1) Execuție de cod ca www-data. Pasul tipic următor: un webshell, adică un fișier PHP ascuns prin care revine oricând.\n2) Chiar fără execuție de cod: citește din memorie parolele, sesiunile și cheile API ale altor utilizatori.\n3) De acolo mai departe: citește config.php, ia parola bazei de date, descarcă toată baza. Circa 394 000 de servere PHP au și SSH expus, deci se poate muta și pe alte sisteme.\n\nLegătura cu Lecția 1: vectorul CVSS AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H. Atac prin rețea, fără privilegii, fără interacțiunea utilizatorului, impact mare pe toate trei: confidențialitate, integritate, disponibilitate. Complexitatea e „High” pentru că depinde de așezarea memoriei și de ce worker primește cererea; de aceea 9.2 și nu 10.\n\nÎntrebare pentru studenți: care literă din triada CIA e încălcată de fiecare dintre cele trei carduri?",
+  // 8
+  "E o lecție despre dezvăluirea coordonată (coordinated disclosure). În mod normal: cercetătorul raportează în privat, producătorul repară, distribuțiile Linux pregătesc pachetele și toți publică în aceeași zi, ca administratorii să poată actualiza înainte să atace cineva.\n\nAici: Wiz Research găsește bug-urile în august (folosind și modele AI) și demonstrează atacul pe WordPress și Drupal. Pe 21 septembrie echipa PHP confirmă și începe lucrul. Pe 20 octombrie identificatorii CVE apar pe Hacker News înainte de termen. În noaptea de 21 octombrie o arhivă cu detalii apare pe VirusTotal, iar dimineața Patchstack și Cloudflare raportează primele încercări de atac, cu ore înainte să existe patch-ul. Practic o fereastră de zero-day.\n\nLa 13:52 UTC PHP publică versiunile reparate; CISA, CERT-EU și NCSC (Marea Britanie) emit alerte urgente; apar PoC-uri publice, unele nefuncționale.\n\nAtenție la formulare: la momentul prezentării nu se știe încă câte atacuri au reușit.",
+  // 9
+  "Versiunile reparate, publicate pe 21 octombrie: 8.5.12, 8.4.27, 8.3.36, 8.2.35. PHP 8.1 și mai vechi nu mai sunt suportate: nu primesc versiune oficială, doar corecții la nivel de cod sursă pentru 7.4–8.1 sau pachete de la distribuții (Ubuntu, Red Hat etc.).\n\nCe schimbă patch-ul, pe scurt: curățarea nu mai lucrează cu date pe jumătate construite, starea globală e resetată între cereri, iar un worker care atinge limita de memorie e oprit, nu continuă.\n\nActualizarea e SINGURA soluție completă; advisory-ul spune clar că nu există o configurare care să elimine complet problema.\n\nCapcană practică: „php -v” din terminal poate fi alt PHP decât cel care servește site-ul (FPM, container, panoul de hosting). Și după actualizare trebuie repornite procesele, altfel binarul vechi rulează în continuare în memorie.",
+  // 10
+  "Dacă nu poți actualiza imediat, există măsuri temporare. Ele reduc riscul, nu îl elimină.\n\nÎn php.ini sau în configurația pool-ului FPM, apoi restart: dezactivezi session.upload_progress, fatal_error_backtraces (pe 8.5), limitezi mărimea cererilor; opțional pm.max_requests=1, adică fiecare worker servește o singură cerere (scump ca performanță). Setările trebuie puse în configurație, nu cu ini_set() în cod: bug-ul se declanșează înainte să pornească scriptul.\n\nÎn fața serverului: WAF sau reverse proxy care limitează dimensiunea cererilor și numărul de părți multipart. Izolare: acces doar prin VPN sau listă de IP-uri, ori oprești serviciul (recomandarea CERT-EU). Verificare: cauți înapoi de pe 20 octombrie fișiere noi în directorul site-ului, procese lansate de php-fpm, trafic de ieșire neobișnuit.\n\nCe NU ajută: ascunderea erorilor sau a versiunii PHP. Securitatea prin obscuritate nu e protecție.\n\nÎntrebare pentru studenți: care dintre acestea sunt „apărare în adâncime”? (WAF, izolare, configurare = straturi; patch-ul = reparația reală.)",
+  // 11
+  "Lecțiile pentru noi:\n1) Să știi ce rulezi. Fă inventarul fiecărui PHP: servere, containere, echipamente. Nu poți actualiza ce nu știi că există.\n2) Versiunile ieșite din suport sunt un risc. Circa 880 000 de servere publice rulau versiuni care nu au primit nicio corecție (PHP 5, 7, 8.0, 8.1).\n3) Actualizarea e un proces: rapid, imagini de container reconstruite automat, procese repornite.\n4) Apărare în adâncime: cod sigur nu ajunge. Privilegii minime pentru www-data, firewall, WAF, monitorizare.\n\nÎn laboratoare: Lab 4 (unattended-upgrades pe server) și Lab 5 (limite în Nginx, reverse proxy) sunt exact aceste controale.\n\nCifrele de expunere sunt estimări din scanări ale internetului (Mallory.ai / Phoenix Security, Modat ~4,4 milioane de servicii PHP), le prezentăm ca ordine de mărime. Merită spus și că AI a fost folosit atât pentru găsirea bug-urilor, cât și, la câteva ore după scurgere, pentru încercarea de a le reproduce: timpul dintre publicare și atac se scurtează.",
+  // 12
+  "Încheiere și discuție: „Cum ați găsi într-o oră fiecare instalare PHP dintr-o organizație?” Răspunsuri bune: scanare de rețea, inventar de pachete pe servere, scanarea imaginilor de container, întrebat furnizorii de echipamente, căutat antetul X-Powered-By.\n\nSurse: advisory-urile PHP GHSA-w8hw-w9fx-j79w și GHSA-6wmf-4rv5-p3rp; alerta CISA din 21.10.2026; Rapid7, Qualys, Google Cloud, Recorded Future, SANS ISC, Infosecurity Magazine, UW-IT. Unele detalii (numărul exact de atacuri reușite) erau încă în evoluție pe 22.10.2026.",
+];
+let noteIdx = 0;
+function notes(slide, en) {
+  slide.addNotes(NOTES_RO[noteIdx++] + "\n\n— English —\n" + en);
+}
+
 function tb(slide, text, opts) {
   slide.addText(text, Object.assign({ isTextBox: true, fontFace: THEME.bodyFontFace, margin: 0, valign: "top" }, opts));
 }
@@ -119,7 +151,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
   // 1. Title
   {
     const s = titleSlide(S1, "PHP2Shell: when the language itself is vulnerable", "CVE-2026-109618 & CVE-2026-109619  ·  Case study, October 2026", await icon(fa.FaBug, H.accent1), "Bug");
-    s.addNotes("10-15 minute talk. Start with a question: 'Your code is perfect, no SQL injection, no XSS. Can your site still be hacked?' Answer: yes, if the runtime under it is broken. That is exactly what happened to PHP on 21 October 2026.");
+    notes(s, "10-15 minute talk. Start with a question: 'Your code is perfect, no SQL injection, no XSS. Can your site still be hacked?' Answer: yes, if the runtime under it is broken. That is exactly what happened to PHP on 21 October 2026.");
   }
 
   // 2. Key facts
@@ -143,7 +175,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "Two memory-safety bugs in the PHP interpreter (written in C). ", options: { bold: true, color: C.text2 } },
       { text: "With specially crafted HTTP requests an attacker can run their own code on the server, or read memory from other users' requests: passwords, session tokens, API keys.", options: { color: C.text1 } },
     ], { x: 2.2, y: 4.85, w: 10.2, h: 1.75, fontSize: 17, valign: "middle" });
-    s.addNotes("RCE = Remote Code Execution, the worst category: the attacker runs commands with the rights of the web server user (www-data). The nickname PHP2Shell means 'from a PHP request to a shell on the server'. Official score is 9.2; leaked posts before release claimed 10.0, which was wrong.");
+    notes(s, "RCE = Remote Code Execution, the worst category: the attacker runs commands with the rights of the web server user (www-data). The nickname PHP2Shell means 'from a PHP request to a shell on the server'. Official score is 9.2; leaked posts before release claimed 10.0, which was wrong.");
   }
 
   // 3. Who is exposed
@@ -167,7 +199,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "Key idea: ", options: { bold: true, color: C.accent3 } },
       { text: "the application code could be 100% correct and still be hacked. The bug is in the runtime, below the application.", options: { color: C.text1 } },
     ], { x: 0.6, y: 5.75, w: 12.1, h: 0.8, fontSize: 18, valign: "middle" });
-    s.addNotes("Every server that runs PHP and answers web requests: PHP-FPM, Apache mod_php, php-cgi, FrankenPHP, LiteSpeed. mod_php was the highest priority because the exploit fires before any application code runs. PHP CLI scripts (cron jobs) are not the target, since there is no attacker-controlled HTTP request.");
+    notes(s, "Every server that runs PHP and answers web requests: PHP-FPM, Apache mod_php, php-cgi, FrankenPHP, LiteSpeed. mod_php was the highest priority because the exploit fires before any application code runs. PHP CLI scripts (cron jobs) are not the target, since there is no attacker-controlled HTTP request.");
   }
 
   // ================= HOW IT WORKS =================
@@ -204,7 +236,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "PHP2Shell breaks exactly this assumption. ", options: { bold: true, color: C.accent3 } },
       { text: "Both bugs live in the red box.", options: { color: C.text1 } },
     ], { x: 0.95, y: 3.95, w: 11.4, h: 2.4, fontSize: 18, valign: "middle" });
-    s.addNotes("Draw this on the board if possible. Connect to Lab 5: PHP-FPM/Nginx work exactly like this. A worker is a process; memory inside it survives from one request to the next unless PHP resets it.");
+    notes(s, "Draw this on the board if possible. Connect to Lab 5: PHP-FPM/Nginx work exactly like this. A worker is a process; memory inside it survives from one request to the next unless PHP resets it.");
   }
 
   // 5. Bug 1
@@ -230,7 +262,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "Bug class: ", options: { bold: true, color: C.text2 } },
       { text: "use-after-free / uninitialized pointer (CWE-416, CWE-824) in error handling (CWE-755). One request per attempt on mod_php.", options: { color: C.text1 } },
     ], { x: 0.6, y: 6.1, w: 12.1, h: 0.7, fontSize: 15, valign: "middle" });
-    s.addNotes("Simplified example; the public PoC used a multipart POST with an extremely long filename. The point for students: error paths are rarely tested. Code that handles 'out of memory' runs almost never in normal life, so bugs there survive for years. On mod_php the attack works before application code even starts. For PHP-FPM no full exploit was shown for this specific CVE.");
+    notes(s, "Simplified example; the public PoC used a multipart POST with an extremely long filename. The point for students: error paths are rarely tested. Code that handles 'out of memory' runs almost never in normal life, so bugs there survive for years. On mod_php the attack works before application code even starts. For PHP-FPM no full exploit was shown for this specific CVE.");
   }
 
   // 6. Bug 2
@@ -263,7 +295,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "Enabled by default: ", options: { bold: true, color: C.accent3 } },
       { text: "session.upload_progress (since PHP 5.4, 2012) and fatal_error_backtraces (PHP 8.5). Confirmed RCE on Apache mod_php and on PHP-FPM.", options: { color: C.text1 } },
     ], { x: 2.15, y: 5.2, w: 10.3, h: 1.4, fontSize: 17, valign: "middle" });
-    s.addNotes("This is the cross-request bug. Two requests have to land on the same worker; the attacker just sends many pairs until it works. Important detail from the advisory: hiding errors with display_errors=Off, error_reporting or @ does NOT help. The stale data is used even if nothing is printed or logged. So 'my logs are clean' is not proof of safety.");
+    notes(s, "This is the cross-request bug. Two requests have to land on the same worker; the attacker just sends many pairs until it works. Important detail from the advisory: hiding errors with display_errors=Off, error_reporting or @ does NOT help. The stale data is used even if nothing is printed or logged. So 'my logs are clean' is not proof of safety.");
   }
 
   // 7. Impact
@@ -286,7 +318,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "CIA triad: ", options: { bold: true, color: C.text2 } },
       { text: "all three broken. Confidentiality (leaked secrets), Integrity (modified files, webshells), Availability (crashed workers).", options: { color: C.text1 } },
     ], { x: 0.6, y: 5.65, w: 12.1, h: 0.8, fontSize: 18, valign: "middle" });
-    s.addNotes("Link back to Lesson 1: CVSS vector AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H. Network attack, no privileges, no user interaction, high impact on C, I and A. AC:H (high complexity) because it depends on heap layout and worker scheduling, which is why it is 9.2 and not 10.");
+    notes(s, "Link back to Lesson 1: CVSS vector AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:H. Network attack, no privileges, no user interaction, high impact on C, I and A. AC:H (high complexity) because it depends on heap layout and worker scheduling, which is why it is 9.2 and not 10.");
   }
 
   // ================= RESPONSE =================
@@ -313,7 +345,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       s.addShape(pres.shapes.OVAL, { x: x0, y: y + 0.11, w: 0.28, h: 0.28, fill: { color: col }, line: { color: H.lt1, width: 2 }, objectName: "Dot " + (i + 1) });
       tb(s, what, { x: x0 + 0.6, y, w: 9.2, h: 0.5, fontSize: 16, color: C.text1, valign: "middle" });
     }
-    s.addNotes("This is a lesson in coordinated disclosure. Normally: researcher reports privately, vendor fixes, distros prepare packages, everyone publishes on the same day. Here the CVE IDs leaked a day early and an archive with details hit VirusTotal, so attacks started hours BEFORE the patch existed. That is effectively a zero-day window. Note: reports of attacks are early; the number of successful compromises was not confirmed at the time.");
+    notes(s, "This is a lesson in coordinated disclosure. Normally: researcher reports privately, vendor fixes, distros prepare packages, everyone publishes on the same day. Here the CVE IDs leaked a day early and an archive with details hit VirusTotal, so attacks started hours BEFORE the patch existed. That is effectively a zero-day window. Note: reports of attacks are early; the number of successful compromises was not confirmed at the time.");
   }
 
   // 9. The fix
@@ -343,7 +375,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       tb(s, txt, { x: 7.9, y: y + 0.42, w: 4.8, h: 0.6, fontSize: 14, color: C.text1 });
     }
     tb(s, "Fixes by the PHP core team (arnaud-lb, iluuu1994, bukka, ndossche). Advisories: GHSA-w8hw-w9fx-j79w, GHSA-6wmf-4rv5-p3rp", { x: 6.85, y: 5.75, w: 5.85, h: 0.75, fontSize: 12, color: C.accent5 });
-    s.addNotes("Updating is the ONLY complete fix; the advisory says there is no complete configuration workaround. Practical gotcha: 'php -v' on the command line may be a different PHP than the one serving the website (FPM, a container, a hosting panel). After updating you must restart the workers, otherwise the old binary keeps running in memory.");
+    notes(s, "Updating is the ONLY complete fix; the advisory says there is no complete configuration workaround. Practical gotcha: 'php -v' on the command line may be a different PHP than the one serving the website (FPM, a container, a hosting panel). After updating you must restart the workers, otherwise the old binary keeps running in memory.");
   }
 
   // 10. If you cannot patch today
@@ -369,7 +401,7 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "Does not help: ", options: { bold: true, color: C.accent3 } },
       { text: "display_errors=Off, the @ operator, hiding the PHP version (expose_php=Off). Obscurity is not protection.", options: { color: C.text1 } },
     ], { x: 0.6, y: 6.2, w: 12.1, h: 0.6, fontSize: 16, valign: "middle" });
-    s.addNotes("Settings must be set in php.ini or the pool config; ini_set() in code is too late because the bug fires before the script starts. Ask students: which of these is defense in depth? (WAF + isolation + config hardening are layers; the patch is the real fix.)");
+    notes(s, "Settings must be set in php.ini or the pool config; ini_set() in code is too late because the bug fires before the script starts. Ask students: which of these is defense in depth? (WAF + isolation + config hardening are layers; the patch is the real fix.)");
   }
 
   // 11. Lessons
@@ -393,13 +425,13 @@ function card(slide, x, y, w, h, name, fill = C.background2) {
       { text: "In our labs: ", options: { bold: true, color: C.accent2 } },
       { text: "Lab 4 (unattended-upgrades on the server) and Lab 5 (Nginx limits, reverse proxy) are exactly these controls.", options: { color: C.text1 } },
     ], { x: 0.6, y: 6.05, w: 12.1, h: 0.7, fontSize: 17, valign: "middle" });
-    s.addNotes("Exposure numbers are estimates from internet scans (Mallory.ai / Phoenix Security, Modat ~4.4 million PHP services). Treat them as directional. Also worth mentioning: AI tools were used both to find these bugs and, within hours of the leak, to try to reproduce them. The time between disclosure and attack keeps shrinking.");
+    notes(s, "Exposure numbers are estimates from internet scans (Mallory.ai / Phoenix Security, Modat ~4.4 million PHP services). Treat them as directional. Also worth mentioning: AI tools were used both to find these bugs and, within hours of the leak, to try to reproduce them. The time between disclosure and attack keeps shrinking.");
   }
 
   // 12. Closing
   {
     const s = titleSlide(S3, "Your code was fine. Your server was not.", "Discussion: how would you find every PHP install in your organisation in one hour?", await icon(fa.FaQuestionCircle, H.accent1), "Question");
-    s.addNotes("Sources: PHP advisories GHSA-w8hw-w9fx-j79w and GHSA-6wmf-4rv5-p3rp; CISA alert 21 Oct 2026; Rapid7, Qualys, Google Cloud, Recorded Future, SANS ISC, Infosecurity Magazine, Univ. of Washington IT. Some details (exact attack counts) were still developing on 22 Oct 2026.");
+    notes(s, "Sources: PHP advisories GHSA-w8hw-w9fx-j79w and GHSA-6wmf-4rv5-p3rp; CISA alert 21 Oct 2026; Rapid7, Qualys, Google Cloud, Recorded Future, SANS ISC, Infosecurity Magazine, Univ. of Washington IT. Some details (exact attack counts) were still developing on 22 Oct 2026.");
   }
 
   await pres.writeFile({ fileName: OUT });
